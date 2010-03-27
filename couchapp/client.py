@@ -265,8 +265,8 @@ class Database(CouchdbResource):
 
         @return rev: str, the last revision of document.
         """
-        r = self.head(escape_docid(docid))
-        return r.headers['etag'].strip('"')
+        r = self.get(escape_docid(docid))
+        return r.json_body["_rev"].strip('"')
         
     def delete_doc(self, id_or_doc):
         """ Delete a document
