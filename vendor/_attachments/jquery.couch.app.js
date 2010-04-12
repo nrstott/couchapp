@@ -62,15 +62,25 @@
         
         // Apply the behavior
         $(formSelector).submit(function(e) {
+          var vetoed = false;
+          
           e.preventDefault();
           // formToDeepJSON acts on localFormDoc by reference
           formToDeepJSON(this, opts.fields, localFormDoc);
-          if (opts.beforeSave) {opts.beforeSave(localFormDoc);}
-          db.saveDoc(localFormDoc, {
-            success : function(resp) {
-              if (opts.success) {opts.success(resp, localFormDoc);}
+          if (opts.beforeSave) {
+            try {
+              opts.beforeSave(localFormDoc);
+            } catch (err) {
+              vetoed = true;
             }
-          });
+          }
+          if (!vetoed) {
+            db.saveDoc(localFormDoc, {
+              success : function(resp) {
+                if (opts.success) {opts.success(resp, localFormDoc);}
+              }
+            });
+          }
           
           return false;
         });
