@@ -1,6 +1,6 @@
-$.log = function() {
+$.log = function(m) {
   if (window && window.console && window.console.log) {
-    window.console.log(arguments);
+    window.console.log(arguments.length == 1 ? m : arguments);
   }
 };
 
@@ -23,9 +23,9 @@ $.linkify = function(body) {
   return body.replace(/((ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?)/gi,function(a) {
     return '<a target="_blank" href="'+a+'">'+a+'</a>';
   }).replace(/\@([\w\-]+)/g,function(user,name) {
-    return '<a href="#/mentions/'+encodeURIComponent(name)+'">'+user+'</a>';
+    return '<a href="#/mentions/'+encodeURIComponent(name.toLowerCase())+'">'+user+'</a>';
   }).replace(/\#([\w\-\.]+)/g,function(word,tag) {
-    return '<a href="#/tags/'+encodeURIComponent(tag)+'">'+word+'</a>';
+    return '<a href="#/tags/'+encodeURIComponent(tag.toLowerCase())+'">'+word+'</a>';
   });
 };
 
@@ -55,3 +55,12 @@ $.prettyDate = function(time){
 		day_diff < 730 && Math.ceil( day_diff / 31 ) + " months ago" ||
 		Math.ceil( day_diff / 365 ) + " years ago";
 };
+
+$.argsToArray = function(args) {
+  if (!args.callee) return args;
+  var array = [];
+  for (var i=0; i < args.length; i++) {
+    array.push(args[i]);
+  };
+  return array;
+}

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def hook(conf, path, hook_type, *args, **kwargs):
-    if "hook_type" in conf.hooks:
+    if hook_type in conf.hooks:
         for h in conf.hooks.get(hook_type):
             h(path, hook_type, *args, **kwargs)
 
@@ -122,8 +122,8 @@ def pushapps(conf, source, dest, *args, **opts):
                             docs1.append(doc)
                         except ResourceNotFound:
                             pass 
-                if docs1:
-                    db.save_docs(docs1)
+                    if docs1:
+                        db.save_docs(docs1)
     return 0
   
 def pushdocs(conf, source, dest, *args, **opts):
@@ -140,7 +140,6 @@ def pushdocs(conf, source, dest, *args, **opts):
             if d.endswith(".json"):
                 doc = util.read_json(docdir)
                 docid, ext = os.path.splitext(d)
-                
                 doc.setdefault('_id', docid)
                 doc.setdefault('couchapp', {})
                 if export or not noatomic:

@@ -23,7 +23,7 @@ function $$(node) {
   };
   $.forIn = forIn;
   function funViaString(fun) {
-    if (fun && fun.match && fun.match(/function/)) {
+    if (fun && fun.match && fun.match(/^function/)) {
       eval("var f = "+fun);
       if (typeof f == "function") {
         return function() {
@@ -53,21 +53,38 @@ function $$(node) {
   $.evently = {
     connect : function(source, target, events) {
       events.forEach(function(ev) {
-        source.bind(ev, function() {
+        $(source).bind(ev, function() {
           var args = $.makeArray(arguments);
           // remove the original event to keep from stacking args extra deep
           // it would be nice if jquery had a way to pass the original
           // event to the trigger method.
           args.shift();
-          target.trigger(ev, args);
+          $(target).trigger(ev, args);
           return false;
         });
       });
     },
     paths : [],
-    changesDBs : {}
+    changesDBs : {},
+    changesOpts : {}
   };
   
+  function extractFrom(name, evs) {
+    return evs[name];
+  };
+
+  function extractEvents(name, ddoc) {
+    // extract events from ddoc.evently and ddoc.vendor.*.evently
+    var events = [true, {}];
+    $.forIn(ddoc.vendor, function(k, v) {
+      if (v.evently && v.evently[name]) {
+        events.push(v.evently[name]);
+      }
+    });
+    if (ddoc.evently[name]) {events.push(ddoc.evently[name]);}
+    return $.extend.apply(null, events);
+  }
+
   $.fn.evently = function(events, app, args) {
     var elem = $(this);
     // store the app on the element for later use
@@ -75,13 +92,18 @@ function $$(node) {
       $$(elem).app = app;      
     }
 
+    if (typeof events == "string") {
+      events = extractEvents(events, app.ddoc);
+    }
+
+    $$(elem).evently = events;
     // setup the handlers onto elem
     forIn(events, function(name, h) {
       eventlyHandler(elem, name, h, args);
     });
     
     if (events._init) {
-      $.log("ev _init", elem);
+      // $.log("ev _init", elem);
       elem.trigger("_init", args);
     }
     
@@ -89,7 +111,7 @@ function $$(node) {
       $("body").bind("evently.changes."+app.db.name, function() {
         // we want to unbind this function when the element is deleted.
         // maybe jquery 1.4.2 has this covered?
-        $.log('changes', elem);
+        // $.log('changes', elem);
         elem.trigger("_changes");        
       });
       followChanges(app);
@@ -105,7 +127,7 @@ function $$(node) {
     }
     var f = funViaString(h);
     if (typeof f == "function") {
-      elem.bind(name,  {args:args}, f); 
+      elem.bind(name, {args:args}, f); 
     } else if (typeof f == "string") {
       elem.bind(name, {args:args}, function() {
         $(this).trigger(f, arguments);
@@ -131,6 +153,7 @@ function $$(node) {
   };
   
   $.fn.replace = function(elem) {
+    // $.log("Replace", this)
     $(this).empty().append(elem);
   };
   
@@ -139,10 +162,15 @@ function $$(node) {
   // as well as call this in a way that replaces the host elements content
   // this would be easy if there is a simple way to get at the element we just appended
   // (as html) so that we can attache the selectors
-  function renderElement(me, h, args, qrun) {
+  function renderElement(me, h, args, qrun, arun) {
     // if there's a query object we run the query,
     // and then call the data function with the response.
-    if (h.query && !qrun) {
+    if (h.before && (!qrun || !arun)) {
+      funViaString(h.before).apply(me, args);
+    }
+    if (h.async && !arun) {
+      runAsync(me, h, args)
+    } else if (h.query && !qrun) {
       // $.log("query before renderElement", arguments)
       runQuery(me, h, args)
     } else {
@@ -150,9 +178,10 @@ function $$(node) {
       // $.log(me, h, args, qrun)
       // otherwise we just render the template with the current args
       var selectors = runIfFun(me, h.selectors, args);
-      var act = h.render || "replace";
+      var act = (h.render || "replace").replace(/\s/g,"");
       var app = $$(me).app;
       if (h.mustache) {
+        // $.log("rendering", h.mustache)
         var newElem = mustachioed(me, h, args);
         me[act](newElem);
       }
@@ -170,7 +199,8 @@ function $$(node) {
         });
       }
       if (h.after) {
-        funViaString(h.after).apply(me, args);
+        runIfFun(me, h.after, args);
+        // funViaString(h.after).apply(me, args);
       }
     }    
   };
@@ -182,6 +212,15 @@ function $$(node) {
       runIfFun(me, h.data, args), 
       runIfFun(me, h.partials, args)));
   };
+  
+  function runAsync(me, h, args) {  
+    // the callback is the first argument
+    funViaString(h.async).apply(me, [function() {
+      renderElement(me, h, 
+        $.argsToArray(arguments).concat($.argsToArray(args)), false, true);
+    }].concat($.argsToArray(args)));
+  };
+  
   
   function runQuery(me, h, args) {
     // $.log("runQuery: args", args)
@@ -199,9 +238,9 @@ function $$(node) {
     
     if (qType == "newRows") {
       q.success = function(resp) {
-        $.log("runQuery newRows success", resp.rows.length, me, resp)
+        // $.log("runQuery newRows success", resp.rows.length, me, resp)
         resp.rows.reverse().forEach(function(row) {
-          renderElement(me, h, [row], true)
+          renderElement(me, h, [row].concat($.argsToArray(args)), true)
         });
         if (userSuccess) userSuccess(resp);
       };
@@ -209,9 +248,10 @@ function $$(node) {
     } else {
       q.success = function(resp) {
         // $.log("runQuery success", resp)
-        renderElement(me, h, [resp], true);
+        renderElement(me, h, [resp].concat($.argsToArray(args)), true);
         userSuccess && userSuccess(resp);
       };
+      // $.log(app)
       app.view(viewName, q);      
     }
   }
@@ -277,34 +317,47 @@ function $$(node) {
   
   // only start one changes listener per db
   function followChanges(app) {
-    var dbName = app.db.name;
+    var dbName = app.db.name, changeEvent = function(resp) {
+      $("body").trigger("evently.changes."+dbName, [resp]);
+    };
     if (!$.evently.changesDBs[dbName]) {
-      connectToChanges(app, function() {
-        $("body").trigger("evently.changes."+dbName);
-      });
+      if (app.db.changes) {
+        // new api in jquery.couch.js 1.0
+        app.db.changes(null, $.evently.changesOpts).onChange(changeEvent);
+      } else {
+        // in case you are still on CouchDB 0.11 ;) deprecated.
+        connectToChanges(app, changeEvent);
+      }
       $.evently.changesDBs[dbName] = true;
     }
   }
-  
-  function connectToChanges(app, fun) {
-    function resetHXR(x) {
-      x.abort();
-      connectToChanges(app, fun);    
+  $.evently.followChanges = followChanges;
+  // deprecated. use db.changes() from jquery.couch.js
+  // this does not have an api for closing changes request.
+  function connectToChanges(app, fun, update_seq) {
+    function changesReq(seq) {
+      var url = app.db.uri+"_changes?heartbeat=10000&feed=longpoll&since="+seq;
+      if ($.evently.changesOpts.include_docs) {
+        url = url + "&include_docs=true";
+      }
+      $.ajax({
+        url: url,
+        contentType: "application/json",
+        dataType: "json",
+        complete: function(req) {
+          var resp = $.httpData(req, "json");
+          fun(resp);
+          connectToChanges(app, fun, resp.last_seq);
+        }
+      });
     };
-    app.db.info({success: function(db_info) {  
-      var c_xhr = jQuery.ajaxSettings.xhr();
-      c_xhr.open("GET", app.db.uri+"_changes?feed=continuous&since="+db_info.update_seq, true);
-      c_xhr.send("");
-      // todo use a timeout to prevent rapid triggers
-      var t;
-      c_xhr.onreadystatechange = function() {
-        clearTimeout(t);
-        t = setTimeout(fun, 100);
-      };
-      setTimeout(function() {
-        resetHXR(c_xhr);      
-      }, 1000 * 60);
-    }});
+    if (update_seq) {
+      changesReq(update_seq);
+    } else {
+      app.db.info({success: function(db_info) {
+        changesReq(db_info.update_seq);
+      }});
+    }
   };
   
 })(jQuery);

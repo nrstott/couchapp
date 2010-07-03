@@ -24,6 +24,8 @@ aliases = {
     'rev': '_rev' 
 }
 
+UNKNOWN_VERSION = tuple()
+
 class CouchdbResponse(HttpResponse):
     
     @property
@@ -120,8 +122,14 @@ class CouchdbResource(Resource):
             raise RequestFailed("unknown error [%s]" % str(e))
                
 def couchdb_version(server_uri):
-    resp = request(server_uri, headers=[("Accept", "application/json")])
-    version = json.load(resp.body_file)["version"]
+    res = CouchdbResource(server_uri)
+    
+    try:
+        resp = res.get()
+    except Exception, e:
+        return UNKNOWN_VERSION
+    
+    version = resp.json_body["version"]
     t = []
     for p in version.split("."):
         try:
@@ -258,6 +266,7 @@ class Database(CouchdbResource):
             if a in json_res:
                 doc1[n] = json_res[a]
         doc.update(doc1)
+        return doc
         
     def last_rev(self, docid):
         """ Get last revision from docid (the '_rev' member)
@@ -402,8 +411,18 @@ class Database(CouchdbResource):
                         rev=doc['_rev']).json_body
         return doc.update(self.open_doc(doc['_id']))
         
-    
-                
+    def view(self, view_name, **params):
+        try:
+            dname, vname = view_name.split("/")
+            path = "/_design/%s/_view/%s" % (dname, vname)
+        except ValueError:
+            path = view_name
+
+        if "keys" in params:
+            keys = params.pop("keys")
+            return self.post(path, json.dumps({"keys": keys}, **params)).json_body
+
+        return self.get(path, **params).json_body
 
 def encode_params(params):
     """ encode parameters in json if needed """
