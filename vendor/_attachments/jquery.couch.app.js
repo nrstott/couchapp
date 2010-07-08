@@ -72,6 +72,7 @@
         // Apply the behavior
         $(formSelector).submit(function(e) {
           e.preventDefault();
+          if (opts.validate && opts.validate() == false) { return false;}
           // formToDeepJSON acts on localFormDoc by reference
           formToDeepJSON(this, opts.fields, localFormDoc);
           if (opts.beforeSave) {opts.beforeSave(localFormDoc);}
@@ -109,6 +110,9 @@
         if (opts.id) {
           db.openDoc(opts.id, {
             attachPrevRev : opts.attachPrevRev,
+            error: function() {
+              if (opts.onError) {opts.onError.apply(opts, arguments);}
+            },
             success: function(doc) {
               if (opts.onLoad) {opts.onLoad(doc);}
               localFormDoc = doc;
