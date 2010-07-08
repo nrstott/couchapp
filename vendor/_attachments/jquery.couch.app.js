@@ -72,6 +72,7 @@
         // Apply the behavior
         $(formSelector).submit(function(e) {
           e.preventDefault();
+          if (opts.validate && opts.validate() == false) { return false;}
           // formToDeepJSON acts on localFormDoc by reference
           formToDeepJSON(this, opts.fields, localFormDoc);
           if (opts.beforeSave) {opts.beforeSave(localFormDoc);}
@@ -109,6 +110,9 @@
         if (opts.id) {
           db.openDoc(opts.id, {
             attachPrevRev : opts.attachPrevRev,
+            error: function() {
+              if (opts.onError) {opts.onError.apply(opts, arguments);}
+            },
             success: function(doc) {
               if (opts.onLoad) {opts.onLoad(doc);}
               localFormDoc = doc;
@@ -193,8 +197,31 @@
       }, $.couch.app.app);
 
       function handleDDoc(ddoc) {
+        var moduleCache = [];
+        
+        function getCachedModule(name, parent) {
+          var key, i, len = moduleCache.length;
+          for (i=0;i<len;++i) {
+            key = moduleCache[i].key;
+            if (key[0] === name && key[1] === parent) {
+              return moduleCache[i].module;
+            }
+          }
+          
+          return null;
+        }
+        
+        function setCachedModule(name, parent, module) {
+          moduleCache.push({ key: [name, parent], module: module });
+        }
+        
         if (ddoc) {
           var require = function(name, parent) {
+            var cachedModule = getCachedModule(name, parent);
+            if (cachedModule !== null) {
+              return cachedModule;
+            }
+            
             var exports = {};
             var resolved = resolveModule(name.split('/'), parent, ddoc);
             var source = resolved[0]; 
@@ -206,6 +233,9 @@
             } catch(e) { 
               throw ["error","compilation_error","Module require('"+name+"') raised error "+e.toSource()]; 
             }
+            
+            setCachedModule(name, parent, exports);
+            
             return exports;
           }
           appExports.ddoc = ddoc;
